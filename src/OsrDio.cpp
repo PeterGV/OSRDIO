@@ -106,7 +106,7 @@ DriverEntry(PDRIVER_OBJECT  DriverObj,
             PUNICODE_STRING RegistryPath)
 {
     NTSTATUS          status;
-    WDF_DRIVER_CONFIG config;
+    WDF_DRIVER_CONFIG driverConfig;
 
     ExInitializeDriverRuntime(DrvRtPoolNxOptIn);
 
@@ -147,7 +147,7 @@ DriverEntry(PDRIVER_OBJECT  DriverObj,
     // Initialize the Driver Config structure:
     //      Specify our Add Device event callback.
     //
-    WDF_DRIVER_CONFIG_INIT(&config,
+    WDF_DRIVER_CONFIG_INIT(&driverConfig,
                            OsrDioEvtDriverDeviceAdd);
 
     //
@@ -159,7 +159,7 @@ DriverEntry(PDRIVER_OBJECT  DriverObj,
     status = WdfDriverCreate(DriverObj,
                              RegistryPath,
                              WDF_NO_OBJECT_ATTRIBUTES,
-                             &config,
+                             &driverConfig,
                              WDF_NO_HANDLE);
 
     if (!NT_SUCCESS(status)) {
@@ -440,6 +440,8 @@ OsrDioEvtDriverDeviceAdd(WDFDRIVER       Driver,
 #endif
         goto done;
     }
+
+    status = STATUS_SUCCESS;
 
 done:
 
