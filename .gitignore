@@ -251,3 +251,4 @@ sdv-user.sdv
 *PVS-Studio*
 
 *.txt
+src/CodeQL

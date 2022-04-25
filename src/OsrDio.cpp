@@ -1,6 +1,6 @@
 ///////////////////////////////////////////////////////////////////////////////
 //
-//    (C) Copyright 2020 OSR Open Systems Resources, Inc.
+//    (C) Copyright 2022 OSR Open Systems Resources, Inc.
 //    All Rights Reserved
 //
 //    This software is supplied for instructional purposes only.
@@ -121,9 +121,9 @@ DriverEntry(PDRIVER_OBJECT  DriverObj,
     //
     RTL_OSVERSIONINFOW versionInfo;
 
-    versionInfo.dwOSVersionInfoSize = sizeof(versionInfo);
-
     RtlZeroMemory(&versionInfo, sizeof(versionInfo));
+
+    versionInfo.dwOSVersionInfoSize = sizeof(versionInfo);
 
     (void)RtlGetVersion(&versionInfo);
 
@@ -138,7 +138,7 @@ DriverEntry(PDRIVER_OBJECT  DriverObj,
 #endif
 
 #if DBG
-    DbgPrint("\nOsrDio Driver V1.0 -- Compiled %s %s\n",
+    DbgPrint("\nOsrDio Driver V1.1 -- Compiled %s %s\n",
              __DATE__,
              __TIME__);
 #endif
@@ -343,6 +343,8 @@ OsrDioEvtDriverDeviceAdd(WDFDRIVER       Driver,
 
     queueConfig.EvtIoDeviceControl = OsrDioEvtIoDeviceControl;
 
+    _Analysis_assume_(queueConfig.EvtIoStop != nullptr);
+
     status = WdfIoQueueCreate(device,
                               &queueConfig,
                               WDF_NO_OBJECT_ATTRIBUTES,
@@ -362,6 +364,8 @@ OsrDioEvtDriverDeviceAdd(WDFDRIVER       Driver,
     //
     WDF_IO_QUEUE_CONFIG_INIT(&queueConfig,
                              WdfIoQueueDispatchManual);
+
+    queueConfig.EvtIoStop = OsrDioEvtIoStop;
 
     status = WdfIoQueueCreate(devContext->WdfDevice,
                               &queueConfig,
@@ -552,7 +556,6 @@ OsrDioEvtDevicePrepareHardware(WDFDEVICE    Device,
                 }
 
                 break;
-
             }
 
             case CmResourceTypeInterrupt: {
@@ -1128,6 +1131,48 @@ done:
 doneDoNotComplete:
 
     return;
+}
+
+//
+// OsrDioEvtIoStop
+//
+// Account for an in-progress Request, as the Framework attempts to move our
+// device out of D0 and into some other D-State.
+//
+// Queue        The Queue from which the Request was presented
+// Request      The in-progress Request that the Framework needs us to deal with
+// ActionFlags  Indicate WHY the Framework is calling us
+//
+VOID
+OsrDioEvtIoStop(WDFQUEUE      Queue,
+                WDFREQUEST    Request,
+                ULONG         ActionFlags)
+{
+
+    UNREFERENCED_PARAMETER(Queue);
+    UNREFERENCED_PARAMETER(ActionFlags);
+
+    //
+    // If we're here, The Framework is trying to move the device out of D0 while
+    // tbere's an IOCTL_OSRDIO_WAITFOR_CHANGE Request on our pending Queue (waiting
+    // for the state of an input line to change). If the line-state DOES change
+    // while the device is powered-down, we're not going to get an interrupt,
+    // and we won't be able to access the device. Soooo... the Framework requires
+    // us to somehow deal with that pending Request.  We could:
+    //
+    // (a) COMPLETE the in-progress Request (typically, STATUS_CANCELLED is
+    //      suggested, but the status can be something more useful to the app).
+    //
+    // (b) Let the Request remain in progress, by telling the Framework to
+    //      put it back on the Queue.
+    //
+    // For our purposes, it seems like the most prudent action would be to cancel
+    // the Request.  So...
+    //
+    WdfRequestCompleteWithInformation(Request,
+                                      STATUS_DEVICE_POWERED_OFF,
+                                      0);
+
 }
 
 //
